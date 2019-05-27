@@ -1,0 +1,12 @@
+FROM ubuntu:18.04
+LABEL author.name="Wonkyo Choe"
+LABEL author.email="heysid@ajou.ac.kr"
+LABEL description="Ajou Univ > 2019 Spring > Distributed and Parallel Programming > Group 3"
+
+RUN apt-get update && apt-get install -y \
+        openjdk-8-jdk \
+        sudo
+COPY src /src
+WORKDIR /src
+VOLUME /src
+EXPOSE 7000
