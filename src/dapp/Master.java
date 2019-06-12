@@ -1,7 +1,6 @@
 package dapp;
 
 import java.net.Socket;
-
 import java.io.*;
 import java.util.*;
 
@@ -14,7 +13,7 @@ public class Master extends Server {
         super(port);
         try {
             BufferedReader reader = new BufferedReader(
-                    new FileReader("/Users/vincent/git/dapp_project/src/dapp/server_list.txt")
+                    new FileReader("/src/dapp/server_list.txt")
             );
             String line = reader.readLine();
 
