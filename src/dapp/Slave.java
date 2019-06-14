@@ -82,7 +82,7 @@ public class Slave extends Server {
             }
             transaction("updateCapacity:" + this.listClient.size());
             try {
-                Thread.sleep(10000);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }

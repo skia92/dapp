@@ -14,6 +14,8 @@ import java.net.Socket;
 // List
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
 
 class Daemon extends Thread {
@@ -44,7 +46,8 @@ class Daemon extends Thread {
 
 public class Server {
     protected ServerSocket server;
-    protected List<String> listClient = new ArrayList<String>();
+    protected Lock serverLock = new ReentrantLock();
+    protected List<Socket> listClient = new ArrayList<Socket>();
     protected int clientThreadPort;
     protected int serverThreadPort;
     protected final int LIMIT = 4;
@@ -61,12 +64,11 @@ public class Server {
         }
     }
 
-    private boolean IsFull() {
+    protected boolean isFull() {
         if (this.listClient.size() == this.LIMIT) {
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     public void clientRun() {
