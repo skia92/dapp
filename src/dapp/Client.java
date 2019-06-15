@@ -123,7 +123,7 @@ public class Client {
             oos.writeObject(cmds);
 
             DataInputStream dis = new DataInputStream(socket.getInputStream());
-            FileOutputStream fos = new FileOutputStream("dapp/downloads/" + filename);
+            FileOutputStream fos = new FileOutputStream("downloads/" + filename);
 
             while((read = dis.read(buffer,0 ,buffer.length)) > 0 ) {
                 totalRead += read;

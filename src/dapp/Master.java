@@ -91,7 +91,7 @@ public class Master extends Server {
         try {
 
             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-            FileInputStream fis = new FileInputStream("dapp/storage/" + filename);
+            FileInputStream fis = new FileInputStream("storage/" + filename);
 
             // upload file from client to server
             while ((read=fis.read(buffer)) > 0) {
@@ -124,7 +124,7 @@ public class Master extends Server {
 
         try {
             DataInputStream dis = new DataInputStream(socket.getInputStream());
-            FileOutputStream fos = new FileOutputStream( "dapp/storage/" + filename);
+            FileOutputStream fos = new FileOutputStream( "storage/" + filename);
 
             while((read = dis.read(buffer,0 ,buffer.length)) > 0 ) {
                 totalRead += read;
