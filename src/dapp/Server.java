@@ -46,12 +46,15 @@ class Daemon extends Thread {
 
 public class Server {
     protected ServerSocket server;
-    protected Lock serverLock = new ReentrantLock();
+    protected static ReentrantLock serverLock = new ReentrantLock();
     protected List<Socket> listClient = new ArrayList<Socket>();
     protected int clientThreadPort;
     protected int serverThreadPort;
     protected final int LIMIT = 4;
     protected Logger logger;
+
+    ObjectInputStream ois;
+    ObjectOutputStream oos;
 
     public Server(int port) {
         this.serverThreadPort = port;

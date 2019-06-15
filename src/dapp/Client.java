@@ -13,6 +13,9 @@ public class Client {
     private String[] args;
     private Logger logger;
 
+    ObjectInputStream ois;
+    ObjectOutputStream oos;
+
     public Client(String serverHost, int serverPort, String[] args) {
         this.args = args;
         this.serverHost = serverHost;
@@ -23,6 +26,8 @@ public class Client {
     public void connect() {
         try {
             this.socket = new Socket(this.serverHost, this.serverPort);
+            oos = new ObjectOutputStream(socket.getOutputStream());
+            ois = new ObjectInputStream(socket.getInputStream());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -35,28 +40,27 @@ public class Client {
     private void reconnect(String host, String port) {
         try {
             this.socket = new Socket(host, Integer.valueOf(port));
+            oos = new ObjectOutputStream(socket.getOutputStream());
+            ois = new ObjectInputStream(socket.getInputStream());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public void checkReconn() {
-        ObjectInputStream ois;
-        ObjectOutputStream oos;
         String res;
         String[] cmds;
 
         try {
-            oos = new ObjectOutputStream(socket.getOutputStream());
             oos.writeObject("checkReconnect");
-
             // read response from master node and if it is reconnect then
             // invoke reconnect, close the socket
-            ois = new ObjectInputStream(socket.getInputStream());
             res = (String) ois.readObject();
             cmds = parse(res);
             if (cmds[0].equalsIgnoreCase("reconnect")) {
                 logger.info("reconnect");
+                oos.writeObject("exit");
+                oos.close();
                 ois.close();
                 socket.close();
                 reconnect(cmds[1], cmds[2]);
@@ -74,21 +78,19 @@ public class Client {
     }
 
     private void cmdExit() {
-        ObjectOutputStream oos;
-        ObjectInputStream ois;
         String[] cmds;
         String res;
 
         try {
-            oos = new ObjectOutputStream(socket.getOutputStream());
             oos.writeObject("exit");
 
             // read response from master node and if it is reconnect then
             // invoke reconnect, close the socket
-            ois = new ObjectInputStream(socket.getInputStream());
             res = (String) ois.readObject();
             cmds = parse(res);
             logger.info(cmds[0]);
+            oos.close();
+            ois.close();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -97,18 +99,14 @@ public class Client {
     }
 
     private void cmdList() {
-        ObjectOutputStream oos;
-        ObjectInputStream ois;
         String[] cmds;
         String res;
 
         try {
-            oos = new ObjectOutputStream(socket.getOutputStream());
             oos.writeObject("list");
 
             // read response from master node and if it is reconnect then
             // invoke reconnect, close the socket
-            ois = new ObjectInputStream(socket.getInputStream());
             res = (String) ois.readObject();
             cmds = parse(res);
             logger.info(cmds[0]);
@@ -142,6 +140,8 @@ public class Client {
         }
         cmdExit();
         try {
+            ois.close();
+            oos.close();
             socket.close();
         } catch (IOException e) {
             e.printStackTrace();

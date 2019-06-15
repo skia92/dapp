@@ -95,7 +95,6 @@ public class Master extends Server {
 
     private String checkReconnect(Socket socket) {
         String message;
-        ObjectOutputStream oos;
 
         if (isFull()) {
             logger.info("isFull");
@@ -114,6 +113,7 @@ public class Master extends Server {
                 oos.writeObject(message);
 
                 // This client is not useful anymore so we need to disconnect
+                oos.close();
                 socket.close();
                 return "reconnect";
             } catch (IOException e) {
@@ -156,16 +156,12 @@ public class Master extends Server {
     public void handleSlave(Socket slave) {
         String message, ret;
         String[] commands;
-        ObjectInputStream ois;
-        ObjectOutputStream oos;
 
         try {
-            ois = new ObjectInputStream(slave.getInputStream());
             message = (String) ois.readObject();
             // parse message
             commands = parse(message);
             ret = handleCommand(commands, slave);
-            oos = new ObjectOutputStream(slave.getOutputStream());
             oos.writeObject(ret);
             ois.close();
             oos.close();
@@ -179,30 +175,23 @@ public class Master extends Server {
 
     public void handleClient(Socket client) {
         String message, ret;
-        ObjectInputStream ois;
-        ObjectOutputStream oos;
 
         // handle request from client
         try {
-            ois = new ObjectInputStream(client.getInputStream());
             message = (String) ois.readObject();
             ret = handleCommand(parse(message), client);
 
             // download and upload should do different method
-            oos = new ObjectOutputStream(client.getOutputStream());
             oos.writeObject(ret);
 
-            if (!ret.equalsIgnoreCase("keep-alive")) {
-                client.close();
+            if (ret.equalsIgnoreCase("keep-alive")) {
+                listClient.add(client);
             } else if (ret.equalsIgnoreCase("exit")) {
+                oos.close();
+                ois.close();
                 client.close();
                 listClient.remove(client);
             }
-            listClient.add(client);
-            logger.info("add..." + listClient);
-
-            // clientRun should run first to obtain a socket lock
-            (new Daemon(this, "clientRun")).start();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -213,41 +202,48 @@ public class Master extends Server {
 
     @Override
     public void serverRun() {
-        Socket client = null;
+        Socket socket = null;
+        int numOfClient = 0;
         while (true) {
-            serverLock.lock();
-            try {
-                logger.info("Ready to accept...");
-                client = server.accept();
-            } catch (IOException e) {
-                e.printStackTrace();
+            numOfClient = listClient.size();
+            if (numOfClient == 0) {
+                // if there is a connected client
+                try {
+                    logger.info("Ready to accept...");
+                    socket = server.accept();
+                    ois = new ObjectInputStream(socket.getInputStream());
+                    oos = new ObjectOutputStream(socket.getOutputStream());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
-            if (isServer(client)) {
-                this.logger.info("Slave[" + client.getPort() + "] connected");
-                handleSlave(client);
+            // I guess we should check every time
+            if (isServer(socket)) {
+                this.logger.info("Slave[" + socket.getPort() + "] connected");
+                handleSlave(socket);
+
             } else {
-                this.logger.info("Client[" + client.getPort() + "] connected");
-                handleClient(client);
+                if (numOfClient <= 0)
+                    this.logger.info("Client[" + socket.getPort() + "] connected");
+                handleClient(socket);
             }
-            serverLock.unlock();
         }
     }
 
     @Override
     public void clientRun() {
-        while(true) {
-            for (int i = 0; i < listClient.size(); i++) {
-                serverLock.lock();
-                logger.info("clientRun...");
-                handleClient(listClient.get(i));
-                serverLock.unlock();
-            }
-        }
+//        while(true) {
+//            for (int i = 0; i < listClient.size(); i++) {
+//                logger.info("clientRun...");
+//                handleClient(listClient.get(i));
+//            }
+//        }
     }
 
     @Override
     public void start() {
         (new Daemon(this, "serverRun")).start();
+//        (new Daemon(this, "clientRun")).start();
     }
 
     public static void main(String[] args) {
