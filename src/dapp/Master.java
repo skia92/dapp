@@ -298,12 +298,9 @@ public class Master extends Server {
                     e.printStackTrace();
                 }
             }
-            <<<<<<< HEAD
-                =======
                 if (!exist) {
                     this.logger.info("Client[" + socket.getPort() + "] connected");
                     exist = true;
-                    >>>>>>> 27157d7f6222d4d5ac6c3bb0fd0c658dd4f49295
                 }
             exist = handleClient(socket, ois, oos);
         }
