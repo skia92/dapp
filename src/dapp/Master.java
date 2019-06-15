@@ -95,7 +95,7 @@ public class Master extends Server {
 
     private boolean isFull() {
         numOfClient = this.listClient.size();
-        numOfClient = 4;
+        // numOfClient = 4;
 
         if (numOfClient == this.LIMIT) {
             return true;
