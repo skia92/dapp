@@ -16,7 +16,7 @@ public class Master extends Server {
         super(port);
         try {
             BufferedReader reader = new BufferedReader(
-                    new FileReader("/src/dapp/server_list.txt")
+                    new FileReader("/home/jonghyeon/git/dapp/src/dapp/server_list.txt")
             );
             String line = reader.readLine();
 
@@ -68,11 +68,67 @@ public class Master extends Server {
     }
 
     private String download(Socket socket, String filename) {
-        return "Try to send: default.txt";
+        byte[] buffer = new byte[4096];
+        String ret="";
+        int read;
+
+        try {
+
+            DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+            FileInputStream fis = new FileInputStream("dapp/storage/" + filename);
+
+            // upload file from client to server
+            while ((read=fis.read(buffer)) > 0) {
+                logger.info(""+read);
+                dos.write(buffer, 0, read);
+            }
+
+            // fis.close();
+            // dos.close();
+
+            // read response from master node and if it is reconnect then
+            // invoke reconnect, close the socket
+            ret = "Succeeded file download. Filename: " + filename;
+            logger.info(ret);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return ret;
     }
 
     private String upload(Socket socket, String filename) {
-        return "Uploaded: default.txt";
+        byte[] buffer = new byte[4096];
+        int read, totalRead = 0;
+        String[] path;
+        String ret="";
+
+        path = filename.split("/");
+        filename = path[path.length -1];
+
+        try {
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+            FileOutputStream fos = new FileOutputStream( "dapp/storage/" + filename);
+
+            while((read = dis.read(buffer,0 ,buffer.length)) > 0 ) {
+                totalRead += read;
+                logger.info("read " + totalRead + "bytes.");
+                fos.write(buffer, 0, read);
+
+                if(read < buffer.length)
+                    break;
+            }
+
+            // fos.close();
+            // dis.close();
+
+            ret = "Succeeded file upload. Filename: " + filename;
+            logger.info(ret);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return ret;
     }
 
     private String findNode() {
@@ -94,7 +150,7 @@ public class Master extends Server {
     }
 
     private String checkReconnect(Socket socket) {
-        String message;
+        String[] message = new String[3];
 
         if (isFull()) {
             logger.info("isFull");
@@ -108,7 +164,7 @@ public class Master extends Server {
             }
             try {
                 // Send a slave server port to be reconnected
-                message = "reconnect:127.0.0.1:" + port;
+                message[0] = "reconnect:127.0.0.1:" + port;
                 oos = new ObjectOutputStream(socket.getOutputStream());
                 oos.writeObject(message);
 
@@ -174,12 +230,18 @@ public class Master extends Server {
     }
 
     public void handleClient(Socket client) {
-        String message, ret;
+        String  ret;
+        Object message;
 
         // handle request from client
         try {
-            message = (String) ois.readObject();
-            ret = handleCommand(parse(message), client);
+            message =  ois.readObject();
+
+            if (message instanceof String) {
+                ret = handleCommand(parse((String)message), client);
+            } else {
+                ret = handleCommand((String[]) message, client);
+            }
 
             // download and upload should do different method
             oos.writeObject(ret);
@@ -194,8 +256,10 @@ public class Master extends Server {
             }
         } catch (IOException e) {
             e.printStackTrace();
+            System.exit(-1);
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
+            System.exit(-1);
         }
 
     }
@@ -225,6 +289,7 @@ public class Master extends Server {
             } else {
                 if (numOfClient <= 0)
                     this.logger.info("Client[" + socket.getPort() + "] connected");
+                logger.info("numOfClient: " + numOfClient);
                 handleClient(socket);
             }
         }

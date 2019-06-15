@@ -1,8 +1,6 @@
 package dapp;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.*;
 import java.net.Socket;
 import java.util.logging.*;
 
@@ -117,11 +115,72 @@ public class Client {
         }
     }
 
-    private void cmdDownload(String filename) {
+    private void cmdDownload(String[] cmds) {
+        byte[] buffer = new byte[4096];
+        int read, totalRead = 0;
+        String ret, filename = cmds[1];
+
+        try {
+            oos.writeObject(cmds);
+
+            DataInputStream dis = new DataInputStream(socket.getInputStream());
+            FileOutputStream fos = new FileOutputStream("dapp/downloads/" + filename);
+
+            while((read = dis.read(buffer,0 ,buffer.length)) > 0 ) {
+                totalRead += read;
+                logger.info("read " + totalRead + "bytes.");
+                fos.write(buffer, 0, read);
+
+                if(read < buffer.length)
+                    break;
+            }
+
+            // fos.close();
+            // dis.close();
+
+            ret = (String) ois.readObject();
+            //ret = "Succeeded file download. Filename: " + filename;
+            logger.info(cmds[0]);
+            logger.info(ret);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
 
     }
 
-    private void cmdUpload(String filename) {
+    private void cmdUpload(String[] cmds) {
+        byte[] buffer = new byte[4096];
+        int read;
+        String filename = cmds[1];
+        String res;
+
+        try {
+            oos.writeObject(cmds);
+
+            DataOutputStream dos = new DataOutputStream(this.socket.getOutputStream());
+            FileInputStream fis = new FileInputStream(filename);
+
+            // upload file from client to server
+            while ((read=fis.read(buffer)) > 0) {
+                logger.info("Send" + read + "bytes");
+                dos.write(buffer, 0, read);
+            }
+
+            // fis.close();
+            // dos.close();
+
+            // read response from master node and if it is reconnect then
+            // invoke reconnect, close the socket
+            res = (String) ois.readObject();
+            logger.info(res);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
     public void command() {
@@ -130,10 +189,10 @@ public class Client {
                 cmdList();
                 break;
             case "upload":
-                cmdUpload(args[1]);
+                cmdUpload(args);
                 break;
             case "download":
-                cmdDownload(args[1]);
+                cmdDownload(args);
                 break;
             default:
                 help();
