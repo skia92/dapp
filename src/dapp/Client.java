@@ -58,14 +58,12 @@ public class Client {
             res = (String) ois.readObject();
             cmds = parse(res);
             if (cmds[0].equalsIgnoreCase("reconnect")) {
-                logger.info("reconnect");
-                oos.writeObject("exit");
+                logger.info("reconnect to Slave " + cmds[1] + ":" + cmds[2]);
                 oos.close();
                 ois.close();
                 socket.close();
                 reconnect(cmds[1], cmds[2]);
             }
-            logger.info(cmds[0]);
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -91,6 +89,7 @@ public class Client {
             logger.info(cmds[0]);
             oos.close();
             ois.close();
+            socket.close();
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
@@ -124,7 +123,7 @@ public class Client {
     private void cmdUpload(String filename) {
     }
 
-    public void command() {
+    private void command() {
         switch (args[0]) {
             case "list":
                 cmdList();
@@ -139,13 +138,6 @@ public class Client {
                 help();
         }
         cmdExit();
-        try {
-            ois.close();
-            oos.close();
-            socket.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     public static void main(String[] args) {
@@ -155,5 +147,6 @@ public class Client {
         // if the server is not full then it would not reconnect
         c.checkReconn();
         c.command();
+        return;
     }
 }

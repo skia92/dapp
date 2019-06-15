@@ -16,7 +16,7 @@ public class Master extends Server {
         super(port);
         try {
             BufferedReader reader = new BufferedReader(
-                    new FileReader("/src/dapp/server_list.txt")
+                    new FileReader("dapp/server_list.txt")
             );
             String line = reader.readLine();
 
@@ -32,7 +32,7 @@ public class Master extends Server {
         this.logger.info("Available server ports are " + this.listSlaveClientPort);
     }
 
-    private String[] parse(String msg) {
+    protected String[] parse(String msg) {
         String[] commands = msg.split(":");
         return commands;
 
@@ -63,15 +63,15 @@ public class Master extends Server {
         return "Slave[" + port + "] capacitiy["+ count + "] updated";
     }
 
-    private String list(Socket socket) {
+    protected String list(Socket socket) {
         return "List: blah blah";
     }
 
-    private String download(Socket socket, String filename) {
+    protected String download(Socket socket, String filename) {
         return "Try to send: default.txt";
     }
 
-    private String upload(Socket socket, String filename) {
+    protected String upload(Socket socket, String filename) {
         return "Uploaded: default.txt";
     }
 
@@ -93,37 +93,34 @@ public class Master extends Server {
         return ret;
     }
 
+    private boolean isFull() {
+        numOfClient = this.listClient.size();
+        numOfClient = 4;
+
+        if (numOfClient == this.LIMIT) {
+            return true;
+        }
+        return false;
+    }
+
     private String checkReconnect(Socket socket) {
         String message;
 
         if (isFull()) {
-            logger.info("isFull");
             // find an idle slave node
-            String port = findNode();
+            String port = String.valueOf(Integer.valueOf(findNode()) - 1000);
 
             // if port is null, it is an error
             if (port.equals("")) {
                 logger.warning("addr is null");
                 System.exit(-1);
             }
-            try {
-                // Send a slave server port to be reconnected
-                message = "reconnect:127.0.0.1:" + port;
-                oos = new ObjectOutputStream(socket.getOutputStream());
-                oos.writeObject(message);
-
-                // This client is not useful anymore so we need to disconnect
-                oos.close();
-                socket.close();
-                return "reconnect";
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            return "reconnect:127.0.0.1:" + port;
         }
         return "keep-alive";
     }
 
-    private String handleCommand (String[] cmds, Socket socket) {
+    protected String handleCommand (String[] cmds, Socket socket) {
         String ret;
         switch(cmds[0]) {
             case "updateCapacity":
@@ -173,7 +170,7 @@ public class Master extends Server {
         }
     }
 
-    public void handleClient(Socket client) {
+    protected void handleClient(Socket client) {
         String message, ret;
 
         // handle request from client
@@ -186,6 +183,10 @@ public class Master extends Server {
 
             if (ret.equalsIgnoreCase("keep-alive")) {
                 listClient.add(client);
+            } else if (ret.matches("recoonect:127.0.0.1:[0,9]{4}")) {
+                oos.close();
+                ois.close();
+                client.close();
             } else if (ret.equalsIgnoreCase("exit")) {
                 oos.close();
                 ois.close();
@@ -203,7 +204,6 @@ public class Master extends Server {
     @Override
     public void serverRun() {
         Socket socket = null;
-        int numOfClient = 0;
         while (true) {
             numOfClient = listClient.size();
             if (numOfClient == 0) {

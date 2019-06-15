@@ -52,6 +52,7 @@ public class Server {
     protected int serverThreadPort;
     protected final int LIMIT = 4;
     protected Logger logger;
+    protected int numOfClient = 0;
 
     ObjectInputStream ois;
     ObjectOutputStream oos;
@@ -65,13 +66,6 @@ public class Server {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    protected boolean isFull() {
-        if (this.listClient.size() == this.LIMIT) {
-            return true;
-        }
-        return false;
     }
 
     public void clientRun() {
