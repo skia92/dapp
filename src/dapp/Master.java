@@ -1,5 +1,6 @@
 package dapp;
 
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.*;
 import java.util.*;
@@ -37,6 +38,21 @@ public class Master extends Server {
         return commands;
 
     }
+
+    protected void incNClient(Socket client) {
+        listClientLock.lock();
+        listClient.add(client);
+        numOfClient.getAndIncrement();
+        listClientLock.unlock();
+    }
+
+    protected void decNClient(Socket client) {
+        listClientLock.lock();
+        listClient.remove(client);
+        numOfClient.getAndDecrement();
+        listClientLock.unlock();
+    }
+
 
     private boolean isServer(Socket client) {
         String slaveClientPort = Integer.toString(client.getPort());
@@ -94,10 +110,7 @@ public class Master extends Server {
     }
 
     private boolean isFull() {
-        numOfClient = this.listClient.size();
-        // numOfClient = 4;
-
-        if (numOfClient == this.LIMIT) {
+        if (numOfClient.get() == this.LIMIT) {
             return true;
         }
         return false;
@@ -150,7 +163,7 @@ public class Master extends Server {
         return ret;
     }
 
-    public void handleSlave(Socket slave) {
+    public void handleSlave(Socket slave, ObjectInputStream ois, ObjectOutputStream oos) {
         String message, ret;
         String[] commands;
 
@@ -170,7 +183,7 @@ public class Master extends Server {
         }
     }
 
-    protected void handleClient(Socket client) {
+    protected boolean handleClient(Socket client, ObjectInputStream ois, ObjectOutputStream oos) {
         String message, ret;
 
         // handle request from client
@@ -182,31 +195,35 @@ public class Master extends Server {
             oos.writeObject(ret);
 
             if (ret.equalsIgnoreCase("keep-alive")) {
-                listClient.add(client);
+                incNClient(client);
             } else if (ret.matches("recoonect:127.0.0.1:[0,9]{4}")) {
                 oos.close();
                 ois.close();
                 client.close();
+                return false;
             } else if (ret.equalsIgnoreCase("exit")) {
                 oos.close();
                 ois.close();
                 client.close();
-                listClient.remove(client);
+                decNClient(client);
+                return false;
             }
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
-
+        return true;
     }
 
     @Override
     public void serverRun() {
         Socket socket = null;
+        ObjectInputStream ois = null;
+        ObjectOutputStream oos = null;
+        boolean exist = false;
         while (true) {
-            numOfClient = listClient.size();
-            if (numOfClient == 0) {
+            if (!exist) {
                 // if there is a connected client
                 try {
                     logger.info("Ready to accept...");
@@ -217,33 +234,48 @@ public class Master extends Server {
                     e.printStackTrace();
                 }
             }
-            // I guess we should check every time
+            if (!exist) {
+                this.logger.info("Client[" + socket.getPort() + "] connected");
+                exist = true;
+            }
+            exist = handleClient(socket, ois, oos);
+        }
+    }
+
+    public void serverRunForSlave() {
+        ServerSocket heartbeat = null;
+        Socket socket = null;
+        ObjectInputStream ois = null;
+        ObjectOutputStream oos = null;
+        try {
+            heartbeat = new ServerSocket(this.serverThreadPort - 1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        while (true) {
+            // if there is a connected client
+            try {
+                logger.info("Slave Heartbeat...");
+                socket = heartbeat.accept();
+                ois = new ObjectInputStream(socket.getInputStream());
+                oos = new ObjectOutputStream(socket.getOutputStream());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             if (isServer(socket)) {
                 this.logger.info("Slave[" + socket.getPort() + "] connected");
-                handleSlave(socket);
-
-            } else {
-                if (numOfClient <= 0)
-                    this.logger.info("Client[" + socket.getPort() + "] connected");
-                handleClient(socket);
+                handleSlave(socket, ois, oos);
             }
         }
     }
 
     @Override
-    public void clientRun() {
-//        while(true) {
-//            for (int i = 0; i < listClient.size(); i++) {
-//                logger.info("clientRun...");
-//                handleClient(listClient.get(i));
-//            }
-//        }
-    }
-
-    @Override
     public void start() {
-        (new Daemon(this, "serverRun")).start();
-//        (new Daemon(this, "clientRun")).start();
+        int i = 0;
+        for (; i < LIMIT; i++) {
+            (new Daemon(this, "serverRun")).start();
+        }
+        (new Daemon(this, "serverRunForSlave")).start();
     }
 
     public static void main(String[] args) {

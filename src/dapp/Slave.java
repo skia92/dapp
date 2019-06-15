@@ -15,9 +15,9 @@ public class Slave extends Master {
 
     }
 
-    private void connect() {
+    private void connectToMaster() {
         try {
-            master = new Socket(InetAddress.getLocalHost(), this.masterPort,
+            master = new Socket(InetAddress.getLocalHost(), this.masterPort - 1,
                     InetAddress.getLocalHost(), this.clientThreadPort);
         } catch (IOException e) {
             e.printStackTrace();
@@ -70,55 +70,34 @@ public class Slave extends Master {
     }
 
     @Override
-    protected void handleClient(Socket client) {
+    protected boolean handleClient(Socket client, ObjectInputStream ois, ObjectOutputStream oos) {
         String message, ret;
+        // handle request from client
+        try {
+            message = (String) ois.readObject();
+            ret = handleCommand(parse(message), client);
 
-        while (numOfClient > 0) {
-            // handle request from client
-            try {
-                message = (String) ois.readObject();
-                ret = handleCommand(parse(message), client);
-
-                // download and upload should do different method
-                oos.writeObject(ret);
-                if (ret.equalsIgnoreCase("exit")) {
-                    oos.close();
-                    ois.close();
-                    client.close();
-                    listClient.remove(client);
-                    numOfClient--;
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
+            // download and upload should do different method
+            oos.writeObject(ret);
+            if (ret.equalsIgnoreCase("exit")) {
+                oos.close();
+                ois.close();
+                client.close();
+                decNClient(client);
+                return false;
             }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
         }
-    }
-
-    @Override
-    public void serverRun() {
-        Socket client = null;
-        while (true) {
-            try {
-                logger.info("Ready to accept...");
-                client = server.accept();
-                oos = new ObjectOutputStream(client.getOutputStream());
-                ois = new ObjectInputStream(client.getInputStream());
-                listClient.add(client);
-                numOfClient++;
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            this.logger.info("Client[" + client.getPort() + "] connected");
-            handleClient(client);
-        }
+        return true;
     }
 
     public void updateCapacity() {
         while(true) {
-            connect();
-            transaction("updateCapacity:" + this.listClient.size());
+            connectToMaster();
+            transaction("updateCapacity:" + numOfClient.get());
             try {
                 Thread.sleep(5000);
             } catch (InterruptedException e) {
@@ -129,8 +108,10 @@ public class Slave extends Master {
 
     @Override
     public void start() {
-        (new Daemon(this, "serverRun")).start();
-        // (new Daemon(this, "clientRun")).start();
+        int i = 0;
+        for (;i < LIMIT; i++) {
+            (new Daemon(this, "serverRun")).start();
+        }
         (new Daemon(this, "updateCapacity")).start();
     }
 
