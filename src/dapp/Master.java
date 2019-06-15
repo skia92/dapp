@@ -1,5 +1,6 @@
 package dapp;
 
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.*;
 import java.util.*;
@@ -16,8 +17,8 @@ public class Master extends Server {
         super(port);
         try {
             BufferedReader reader = new BufferedReader(
-                    new FileReader("/home/jonghyeon/git/dapp/src/dapp/server_list.txt")
-            );
+                    new FileReader("dapp/server_list.txt")
+                    );
             String line = reader.readLine();
 
             while (line != null) {
@@ -32,11 +33,26 @@ public class Master extends Server {
         this.logger.info("Available server ports are " + this.listSlaveClientPort);
     }
 
-    private String[] parse(String msg) {
+    protected String[] parse(String msg) {
         String[] commands = msg.split(":");
         return commands;
 
     }
+
+    protected void incNClient(Socket client) {
+        listClientLock.lock();
+        listClient.add(client);
+        numOfClient.getAndIncrement();
+        listClientLock.unlock();
+    }
+
+    protected void decNClient(Socket client) {
+        listClientLock.lock();
+        listClient.remove(client);
+        numOfClient.getAndDecrement();
+        listClientLock.unlock();
+    }
+
 
     private boolean isServer(Socket client) {
         String slaveClientPort = Integer.toString(client.getPort());
@@ -63,7 +79,7 @@ public class Master extends Server {
         return "Slave[" + port + "] capacitiy["+ count + "] updated";
     }
 
-    private String list(Socket socket) {
+    protected String list(Socket socket) {
         return "List: blah blah";
     }
 
@@ -135,12 +151,12 @@ public class Master extends Server {
         String ret = "";
         // https://www.javacodegeeks.com/2017/09/java-8-sorting-hashmap-values-ascending-descending-order.html
         Map<String, Integer> sorted = slaveCapacities
-                .entrySet()
-                .stream()
-                .sorted(comparingByValue())
-                .collect(
-                        toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, LinkedHashMap::new)
-                );
+            .entrySet()
+            .stream()
+            .sorted(comparingByValue())
+            .collect(
+                    toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2, LinkedHashMap::new)
+                    );
 
         for (Map.Entry<String, Integer> entry : slaveCapacities.entrySet()) {
             ret = entry.getKey();
@@ -149,37 +165,31 @@ public class Master extends Server {
         return ret;
     }
 
+    private boolean isFull() {
+        if (numOfClient.get() == this.LIMIT) {
+            return true;
+        }
+        return false;
+    }
+
     private String checkReconnect(Socket socket) {
         String[] message = new String[3];
 
         if (isFull()) {
-            logger.info("isFull");
             // find an idle slave node
-            String port = findNode();
+            String port = String.valueOf(Integer.valueOf(findNode()) - 1000);
 
             // if port is null, it is an error
             if (port.equals("")) {
                 logger.warning("addr is null");
                 System.exit(-1);
             }
-            try {
-                // Send a slave server port to be reconnected
-                message[0] = "reconnect:127.0.0.1:" + port;
-                oos = new ObjectOutputStream(socket.getOutputStream());
-                oos.writeObject(message);
-
-                // This client is not useful anymore so we need to disconnect
-                oos.close();
-                socket.close();
-                return "reconnect";
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            return "reconnect:127.0.0.1:" + port;
         }
         return "keep-alive";
     }
 
-    private String handleCommand (String[] cmds, Socket socket) {
+    protected String handleCommand (String[] cmds, Socket socket) {
         String ret;
         switch(cmds[0]) {
             case "updateCapacity":
@@ -209,7 +219,7 @@ public class Master extends Server {
         return ret;
     }
 
-    public void handleSlave(Socket slave) {
+    public void handleSlave(Socket slave, ObjectInputStream ois, ObjectOutputStream oos) {
         String message, ret;
         String[] commands;
 
@@ -229,7 +239,7 @@ public class Master extends Server {
         }
     }
 
-    public void handleClient(Socket client) {
+    protected boolean handleClient(Socket client, ObjectInputStream ois, ObjectOutputStream oos) {
         String  ret;
         Object message;
 
@@ -247,12 +257,18 @@ public class Master extends Server {
             oos.writeObject(ret);
 
             if (ret.equalsIgnoreCase("keep-alive")) {
-                listClient.add(client);
+                incNClient(client);
+            } else if (ret.matches("recoonect:127.0.0.1:[0,9]{4}")) {
+                oos.close();
+                ois.close();
+                client.close();
+                return false;
             } else if (ret.equalsIgnoreCase("exit")) {
                 oos.close();
                 ois.close();
                 client.close();
-                listClient.remove(client);
+                decNClient(client);
+                return false;
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -261,16 +277,17 @@ public class Master extends Server {
             e.printStackTrace();
             System.exit(-1);
         }
-
+        return true;
     }
 
     @Override
     public void serverRun() {
         Socket socket = null;
-        int numOfClient = 0;
+        ObjectInputStream ois = null;
+        ObjectOutputStream oos = null;
+        boolean exist = false;
         while (true) {
-            numOfClient = listClient.size();
-            if (numOfClient == 0) {
+            if (!exist) {
                 // if there is a connected client
                 try {
                     logger.info("Ready to accept...");
@@ -281,34 +298,51 @@ public class Master extends Server {
                     e.printStackTrace();
                 }
             }
-            // I guess we should check every time
+            <<<<<<< HEAD
+                =======
+                if (!exist) {
+                    this.logger.info("Client[" + socket.getPort() + "] connected");
+                    exist = true;
+                    >>>>>>> 27157d7f6222d4d5ac6c3bb0fd0c658dd4f49295
+                }
+            exist = handleClient(socket, ois, oos);
+        }
+    }
+
+    public void serverRunForSlave() {
+        ServerSocket heartbeat = null;
+        Socket socket = null;
+        ObjectInputStream ois = null;
+        ObjectOutputStream oos = null;
+        try {
+            heartbeat = new ServerSocket(this.serverThreadPort - 1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        while (true) {
+            // if there is a connected client
+            try {
+                logger.info("Slave Heartbeat...");
+                socket = heartbeat.accept();
+                ois = new ObjectInputStream(socket.getInputStream());
+                oos = new ObjectOutputStream(socket.getOutputStream());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             if (isServer(socket)) {
                 this.logger.info("Slave[" + socket.getPort() + "] connected");
-                handleSlave(socket);
-
-            } else {
-                if (numOfClient <= 0)
-                    this.logger.info("Client[" + socket.getPort() + "] connected");
-                logger.info("numOfClient: " + numOfClient);
-                handleClient(socket);
+                handleSlave(socket, ois, oos);
             }
         }
     }
 
     @Override
-    public void clientRun() {
-//        while(true) {
-//            for (int i = 0; i < listClient.size(); i++) {
-//                logger.info("clientRun...");
-//                handleClient(listClient.get(i));
-//            }
-//        }
-    }
-
-    @Override
     public void start() {
-        (new Daemon(this, "serverRun")).start();
-//        (new Daemon(this, "clientRun")).start();
+        int i = 0;
+        for (; i < LIMIT; i++) {
+            (new Daemon(this, "serverRun")).start();
+        }
+        (new Daemon(this, "serverRunForSlave")).start();
     }
 
     public static void main(String[] args) {

@@ -5,28 +5,22 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.Level;
 
-public class Slave extends Server {
+public class Slave extends Master {
     private int masterPort = 7000;
-    private Lock masterSocketLock = new ReentrantLock();
+//    private Lock masterSocketLock = new ReentrantLock();
     private Socket master;
     public Slave(int port) {
         super(port);
 
     }
 
-    public void connect() {
-        masterSocketLock.lock();
+    private void connectToMaster() {
         try {
-            master = new Socket(InetAddress.getLocalHost(), this.masterPort,
+            master = new Socket(InetAddress.getLocalHost(), this.masterPort - 1,
                     InetAddress.getLocalHost(), this.clientThreadPort);
         } catch (IOException e) {
             e.printStackTrace();
-        } finally {
-            masterSocketLock.unlock();
         }
     }
 
@@ -41,8 +35,8 @@ public class Slave extends Server {
             ois = new ObjectInputStream(master.getInputStream());
             message = (String) ois.readObject();
             this.logger.info("Server - " + message);
-            ois.close();
             oos.close();
+            ois.close();
             master.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -51,38 +45,61 @@ public class Slave extends Server {
         }
     }
 
-
-    public void init() {
-        this.connect();
-        if (master == null) {
-            this.logger.log(Level.WARNING, "Slave failed to connect with Master");
-            System.exit(-1);
-        } else {
-            transaction("init");
+    @Override
+    public String handleCommand (String[] cmds, Socket socket) {
+        String ret;
+        switch(cmds[0]) {
+            case "updateCapcity":
+                updateCapacity();
+            case "list":
+                ret = list(socket);
+                break;
+            case "download":
+                ret = download(socket, cmds[1]);
+                break;
+            case "upload":
+                ret = upload(socket, cmds[1]);
+                break;
+            case "exit":
+                ret = "exit";
+                break;
+            default:
+                ret = "Invalid Command";
         }
+        return ret;
     }
 
     @Override
-    public void serverRun() {
-        Socket client = null;
-        while (true) {
-            try {
-                client = server.accept();
-            } catch (IOException e) {
-                e.printStackTrace();
+    protected boolean handleClient(Socket client, ObjectInputStream ois, ObjectOutputStream oos) {
+        String message, ret;
+        // handle request from client
+        try {
+            message = (String) ois.readObject();
+            ret = handleCommand(parse(message), client);
+
+            // download and upload should do different method
+            oos.writeObject(ret);
+            if (ret.equalsIgnoreCase("exit")) {
+                oos.close();
+                ois.close();
+                client.close();
+                decNClient(client);
+                return false;
             }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
         }
+        return true;
     }
 
     public void updateCapacity() {
         while(true) {
-            if (master.isClosed()) {
-                this.logger.info("Reconnecting to Master...");
-                this.connect();
-            }
-            transaction("updateCapacity:" + this.listClient.size());
+            connectToMaster();
+            transaction("updateCapacity:" + numOfClient.get());
             try {
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -91,9 +108,10 @@ public class Slave extends Server {
 
     @Override
     public void start() {
-        init();
-        (new Daemon(this, "serverRun")).start();
-        // (new Daemon(this, "clientRun")).start();
+        int i = 0;
+        for (;i < LIMIT; i++) {
+            (new Daemon(this, "serverRun")).start();
+        }
         (new Daemon(this, "updateCapacity")).start();
     }
 

@@ -14,6 +14,7 @@ import java.net.Socket;
 // List
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
@@ -46,15 +47,15 @@ class Daemon extends Thread {
 
 public class Server {
     protected ServerSocket server;
-    protected static ReentrantLock serverLock = new ReentrantLock();
-    protected List<Socket> listClient = new ArrayList<Socket>();
     protected int clientThreadPort;
     protected int serverThreadPort;
-    protected final int LIMIT = 4;
+    protected final int LIMIT = 2;
     protected Logger logger;
 
-    ObjectInputStream ois;
-    ObjectOutputStream oos;
+    protected ReentrantLock listClientLock = new ReentrantLock();
+    protected AtomicInteger numOfClient = new AtomicInteger(0);
+    protected List<Socket> listClient = new ArrayList<Socket>();
+
 
     public Server(int port) {
         this.serverThreadPort = port;
@@ -65,13 +66,6 @@ public class Server {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    protected boolean isFull() {
-        if (this.listClient.size() == this.LIMIT) {
-            return true;
-        }
-        return false;
     }
 
     public void clientRun() {
