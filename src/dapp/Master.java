@@ -3,7 +3,12 @@ package dapp;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.Map.Entry.comparingByValue;
 import static java.util.stream.Collectors.toMap;
@@ -80,10 +85,23 @@ public class Master extends Server {
     }
 
     protected String list(Socket socket) {
-        return "List: blah blah";
+        String ret = "\n";
+        // https://stackoverflow.com/questions/31456898/convert-a-for-loop-to-concat-string-into-a-lambda-expression
+        try (Stream<Path> walk = Files.walk(Paths.get("storage"))) {
+            List<String> result = walk.filter(Files::isRegularFile)
+                    .map(x -> x.toString()).collect(Collectors.toList());
+            ret = result.stream()
+                    .map(filename -> filename.toString())
+                    .collect(Collectors.joining("\n"));
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return "\n" + ret;
     }
 
-    private String download(Socket socket, String filename) {
+    protected String download(Socket socket, String filename) {
         byte[] buffer = new byte[4096];
         String ret="";
         int read;
@@ -113,7 +131,7 @@ public class Master extends Server {
         return ret;
     }
 
-    private String upload(Socket socket, String filename) {
+    protected String upload(Socket socket, String filename) {
         byte[] buffer = new byte[4096];
         int read, totalRead = 0;
         String[] path;
@@ -253,12 +271,10 @@ public class Master extends Server {
                 ret = handleCommand((String[]) message, client);
             }
 
-            // download and upload should do different method
             oos.writeObject(ret);
-
             if (ret.equalsIgnoreCase("keep-alive")) {
                 incNClient(client);
-            } else if (ret.matches("recoonect:127.0.0.1:[0,9]{4}")) {
+            } else if (ret.matches("reconnect:127.0.0.1:[0-9]{4,5}")) {
                 oos.close();
                 ois.close();
                 client.close();
@@ -336,7 +352,7 @@ public class Master extends Server {
     @Override
     public void start() {
         int i = 0;
-        for (; i < LIMIT; i++) {
+        for (; i < LIMIT + 1; i++) {
             (new Daemon(this, "serverRun")).start();
         }
         (new Daemon(this, "serverRunForSlave")).start();

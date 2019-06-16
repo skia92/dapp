@@ -1,8 +1,11 @@
 package dapp;
 
 import java.io.*;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.util.Random;
 import java.util.logging.*;
+import java.util.stream.Stream;
 
 public class Client {
     private Socket socket;
@@ -15,13 +18,14 @@ public class Client {
     ObjectOutputStream oos;
 
     public Client(String serverHost, int serverPort, String[] args) {
+        Random rand = new Random();
         this.args = args;
         this.serverHost = serverHost;
         this.serverPort = serverPort;
         this.logger = Logger.getLogger(this.getClass().getName());
     }
 
-    public void connect() {
+    private void connect() {
         try {
             this.socket = new Socket(this.serverHost, this.serverPort);
             oos = new ObjectOutputStream(socket.getOutputStream());
@@ -35,9 +39,9 @@ public class Client {
         return msg.split(":");
     }
 
-    private void reconnect(String host, String port) {
+    private void reconnect(String slaveHost, String slavePort) {
         try {
-            this.socket = new Socket(host, Integer.valueOf(port));
+            this.socket = new Socket(slaveHost, Integer.valueOf(slavePort));
             oos = new ObjectOutputStream(socket.getOutputStream());
             ois = new ObjectInputStream(socket.getInputStream());
         } catch (IOException e) {
@@ -45,7 +49,7 @@ public class Client {
         }
     }
 
-    public void checkReconn() {
+    private void checkReconn() {
         String res;
         String[] cmds;
 
@@ -56,7 +60,8 @@ public class Client {
             res = (String) ois.readObject();
             cmds = parse(res);
             if (cmds[0].equalsIgnoreCase("reconnect")) {
-                logger.info("reconnect to Slave " + cmds[1] + ":" + cmds[2]);
+                logger.info("Client[" + socket.getLocalPort() + "] "
+                        + "reconnect to Slave " + cmds[1] + ":" + cmds[2]);
                 oos.close();
                 ois.close();
                 socket.close();
@@ -101,7 +106,6 @@ public class Client {
 
         try {
             oos.writeObject("list");
-
             // read response from master node and if it is reconnect then
             // invoke reconnect, close the socket
             res = (String) ois.readObject();
