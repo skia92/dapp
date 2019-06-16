@@ -3,7 +3,6 @@ package dapp;
 import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
-import java.util.Random;
 import java.util.logging.*;
 import java.util.stream.Stream;
 
@@ -18,7 +17,6 @@ public class Client {
     ObjectOutputStream oos;
 
     public Client(String serverHost, int serverPort, String[] args) {
-        Random rand = new Random();
         this.args = args;
         this.serverHost = serverHost;
         this.serverPort = serverPort;
