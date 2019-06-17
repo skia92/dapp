@@ -446,7 +446,6 @@ public class Master extends Server {
                     }
                 }
                 deqFile(filename);
-                logger.info("??? " + waitFileQueue + "[]" + numOfQFile.get());
             }
             try {
                 Thread.sleep(10000);
