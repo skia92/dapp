@@ -12,12 +12,11 @@ public class Slave extends Master {
     private Socket master;
     public Slave(int port) {
         super(port);
-
     }
 
     private void connectToMaster() {
         try {
-            master = new Socket(InetAddress.getLocalHost(), this.masterPort - 1,
+            master = new Socket(InetAddress.getLocalHost(), Integer.valueOf(this.listSlaveClientPort.get(0)),
                     InetAddress.getLocalHost(), this.clientThreadPort);
         } catch (IOException e) {
             e.printStackTrace();
@@ -113,6 +112,8 @@ public class Slave extends Master {
             (new Daemon(this, "serverRun")).start();
         }
         (new Daemon(this, "updateCapacity")).start();
+        (new Daemon(this, "replicateSendNode")).start();
+        (new Daemon(this, "replicateRecvNode")).start();
     }
 
     public static void main(String[] args) {

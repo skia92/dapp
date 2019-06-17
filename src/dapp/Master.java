@@ -1,5 +1,6 @@
 package dapp;
 
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.io.*;
@@ -7,19 +8,35 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.util.Map.Entry.comparingByValue;
 import static java.util.stream.Collectors.toMap;
 
+
+
 public class Master extends Server {
     private List<String> listSlaveServerPort = new ArrayList<String>();
-    private List<String> listSlaveClientPort = new ArrayList<String>();
+    protected List<String> listSlaveClientPort = new ArrayList<String>();
+    protected List<Replicate> listReplicate = new ArrayList<Replicate>();
     private Map<String, Integer> slaveCapacities = new HashMap<String, Integer>();
+
+    protected static int masterSPort = 7000;
+    protected static int masterCPort = 8000;
+
+    protected ReentrantLock waitFileQLock = new ReentrantLock();
+    protected AtomicInteger numOfQFile = new AtomicInteger(0);
+    protected List<String> waitFileQueue = new ArrayList<String>();
 
     public Master(int port) {
         super(port);
+        Replicate rPort = new Replicate(masterCPort + 2000, masterSPort + 2000);
+        listSlaveClientPort.add(String.valueOf(masterCPort)); // 8000
+        listReplicate.add(rPort);
+
         try {
             BufferedReader reader = new BufferedReader(
                     new FileReader("dapp/server_list.txt")
@@ -27,7 +44,10 @@ public class Master extends Server {
             String line = reader.readLine();
 
             while (line != null) {
-                listSlaveClientPort.add(line);
+                Replicate rSlavePort = new Replicate(Integer.valueOf(line) + 2000,
+                        Integer.valueOf(line) + 1000);
+                listSlaveClientPort.add(String.valueOf(line)); // 8000
+                listReplicate.add(rSlavePort);
                 line = reader.readLine();
             }
         } catch (IOException e) {
@@ -44,14 +64,28 @@ public class Master extends Server {
 
     }
 
-    protected void incNClient(Socket client) {
+    public void enqFile(String filename) {
+        waitFileQLock.lock();
+        waitFileQueue.add(filename);
+        numOfQFile.getAndIncrement();
+        waitFileQLock.unlock();
+    }
+
+    public void deqFile(String filename) {
+        waitFileQLock.lock();
+        waitFileQueue.remove(filename);
+        numOfQFile.getAndDecrement();
+        waitFileQLock.unlock();
+    }
+
+    public void incNClient(Socket client) {
         listClientLock.lock();
         listClient.add(client);
         numOfClient.getAndIncrement();
         listClientLock.unlock();
     }
 
-    protected void decNClient(Socket client) {
+    public void decNClient(Socket client) {
         listClientLock.lock();
         listClient.remove(client);
         numOfClient.getAndDecrement();
@@ -157,6 +191,14 @@ public class Master extends Server {
             // dis.close();
 
             ret = "Succeeded file upload. Filename: " + filename;
+
+            int replicate = 0;
+            for (int i = 0; i < listReplicate.size(); i++) {
+                if (socket.getPort() == listReplicate.get(i).cPort)
+                    replicate = 1;
+            }
+            if (replicate == 0)
+                enqFile(filename);
             logger.info(ret);
         } catch (IOException e) {
             e.printStackTrace();
@@ -258,7 +300,7 @@ public class Master extends Server {
     }
 
     protected boolean handleClient(Socket client, ObjectInputStream ois, ObjectOutputStream oos) {
-        String  ret;
+        String ret;
         Object message;
 
         // handle request from client
@@ -328,7 +370,9 @@ public class Master extends Server {
         ObjectInputStream ois = null;
         ObjectOutputStream oos = null;
         try {
-            heartbeat = new ServerSocket(this.serverThreadPort - 1);
+            // Well it should be another port but master's clientThreadPort are only used in this context
+            // Port: 8000
+            heartbeat = new ServerSocket(this.clientThreadPort);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -349,6 +393,113 @@ public class Master extends Server {
         }
     }
 
+    private void replicateUpload(Socket s, String filename) {
+        byte[] buffer = new byte[4096];
+        int read;
+        String msg, res;
+
+        msg = "upload:" + filename;
+        try {
+            ObjectOutputStream oos = new ObjectOutputStream(s.getOutputStream());
+            ObjectInputStream ois = new ObjectInputStream(s.getInputStream());
+            oos.writeObject(msg);
+
+            DataOutputStream dos = new DataOutputStream(s.getOutputStream());
+            FileInputStream fis = new FileInputStream(filename);
+
+            // upload file from client to server
+            while ((read=fis.read(buffer)) > 0) {
+                logger.info("Replicate to [" + s.getPort() + "] Send" + read + "bytes");
+                dos.write(buffer, 0, read);
+            }
+
+            // fis.close();
+            // dos.close();
+            res = (String) ois.readObject();
+            logger.info(res);
+            ois.close();
+            oos.close();
+            s.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void replicateSendNode() {
+        while (true) {
+            if (numOfQFile.get() > 0) {
+                // FIXME need another lock actually but for now let just do it...
+                logger.info("Replicating...");
+                String filename = waitFileQueue.get(0);
+                for(int i = 0; i < listReplicate.size(); i++) {
+                    // Skip sender's replicate server port
+                    if (listReplicate.get(i).sPort == this.serverThreadPort + 2000)
+                        continue;
+                    try {
+                        Socket s = new Socket(InetAddress.getLocalHost(), listReplicate.get(i).sPort,
+                                InetAddress.getLocalHost(), this.clientThreadPort + 2000);
+                        replicateUpload(s, filename);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                deqFile(filename);
+                logger.info("??? " + waitFileQueue + "[]" + numOfQFile.get());
+            }
+            try {
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void replicateRecvNode() {
+        ServerSocket repServer = null;
+        Socket repClient;
+        ObjectInputStream ois;
+        ObjectOutputStream oos;
+        try {
+            repServer = new ServerSocket(this.serverThreadPort + 2000);
+            logger.info("Ready to accept replication...[" + (this.serverThreadPort + 2000) + "]" );
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        while (true) {
+            // if there is a connected client
+            try {
+                repClient = repServer.accept();
+                ois = new ObjectInputStream(repClient.getInputStream());
+                oos = new ObjectOutputStream(repClient.getOutputStream());
+
+                // FIXME We should check slave IP / Port
+                handleClient(repClient, ois, oos);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    class Replicate {
+        int cPort;
+        int sPort;
+
+        public Replicate(int cPort, int sPort) {
+            this.cPort = cPort;
+            this.sPort = sPort;
+        }
+
+        private String getCPort() {
+            return String.valueOf(cPort);
+        }
+
+        private String getSPort() {
+            return String.valueOf(sPort);
+        }
+    }
+
     @Override
     public void start() {
         int i = 0;
@@ -356,6 +507,8 @@ public class Master extends Server {
             (new Daemon(this, "serverRun")).start();
         }
         (new Daemon(this, "serverRunForSlave")).start();
+        (new Daemon(this, "replicateSendNode")).start();
+        (new Daemon(this, "replicateRecvNode")).start();
     }
 
     public static void main(String[] args) {

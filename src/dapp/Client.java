@@ -155,10 +155,11 @@ public class Client {
         byte[] buffer = new byte[4096];
         int read;
         String filename = cmds[1];
+        String msg = cmds[0] + ":" + cmds[1];
         String res;
 
         try {
-            oos.writeObject(cmds);
+            oos.writeObject(msg);
 
             DataOutputStream dos = new DataOutputStream(this.socket.getOutputStream());
             FileInputStream fis = new FileInputStream(filename);
@@ -169,14 +170,12 @@ public class Client {
                 dos.write(buffer, 0, read);
             }
 
+            // Why does it have to be commented out?
             // fis.close();
             // dos.close();
 
-            // read response from master node and if it is reconnect then
-            // invoke reconnect, close the socket
             res = (String) ois.readObject();
             logger.info(res);
-
         } catch (IOException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
