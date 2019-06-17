@@ -26,10 +26,12 @@ public class Master extends Server {
 
     protected static int masterSPort = 7000;
     protected static int masterCPort = 8000;
+    protected static int slaveCheck = 0;
 
     protected ReentrantLock waitFileQLock = new ReentrantLock();
     protected AtomicInteger numOfQFile = new AtomicInteger(0);
     protected List<String> waitFileQueue = new ArrayList<String>();
+
 
     public Master(int port) {
         super(port);
@@ -138,26 +140,44 @@ public class Master extends Server {
     protected String download(Socket socket, String filename) {
         byte[] buffer = new byte[4096];
         String ret="";
-        int read;
+        int read, totalread = 0;
+        long filesize;
+
+        filename = "storage/" + filename;
+
+        File f = new File(filename);
+        if(f.exists()) {
+            filesize = f.length();
+        } else {
+            ret = "File:" + filename + "not exist";
+            logger.info(ret);
+            return ret;
+        }
 
         try {
 
             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
-            FileInputStream fis = new FileInputStream("storage/" + filename);
+            FileInputStream fis = new FileInputStream(filename);
+
 
             // upload file from client to server
             while ((read=fis.read(buffer)) > 0) {
-                logger.info(""+read);
+                totalread += read;
+                logger.info(""+totalread);
                 dos.write(buffer, 0, read);
             }
 
-            // fis.close();
-            // dos.close();
+            fis.close();
+            //dos.close();
+
+            logger.info("Stream size:" + dos.size());
+
 
             // read response from master node and if it is reconnect then
             // invoke reconnect, close the socket
-            ret = "Succeeded file download. Filename: " + filename;
-            logger.info(ret);
+            logger.info("Succeeded file download. Filename: " + filename);
+            ret = "";
+
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -187,7 +207,7 @@ public class Master extends Server {
                     break;
             }
 
-            // fos.close();
+            fos.close();
             // dis.close();
 
             ret = "Succeeded file upload. Filename: " + filename;
@@ -197,6 +217,7 @@ public class Master extends Server {
                 if (socket.getPort() == listReplicate.get(i).cPort)
                     replicate = 1;
             }
+
             if (replicate == 0)
                 enqFile(filename);
             logger.info(ret);
@@ -313,7 +334,11 @@ public class Master extends Server {
                 ret = handleCommand((String[]) message, client);
             }
 
+
             oos.writeObject(ret);
+
+            logger.info("#### request: " + message + ", ret: " + ret + " ####");
+
             if (ret.equalsIgnoreCase("keep-alive")) {
                 incNClient(client);
             } else if (ret.matches("reconnect:127.0.0.1:[0-9]{4,5}")) {
@@ -395,7 +420,7 @@ public class Master extends Server {
 
     private void replicateUpload(Socket s, String filename) {
         byte[] buffer = new byte[4096];
-        int read;
+        int read, totalRead=0;
         String msg, res;
 
         msg = "upload:" + filename;
@@ -405,15 +430,16 @@ public class Master extends Server {
             oos.writeObject(msg);
 
             DataOutputStream dos = new DataOutputStream(s.getOutputStream());
-            FileInputStream fis = new FileInputStream(filename);
+            FileInputStream fis = new FileInputStream("storage/" + filename);
 
             // upload file from client to server
             while ((read=fis.read(buffer)) > 0) {
-                logger.info("Replicate to [" + s.getPort() + "] Send" + read + "bytes");
+                totalRead += read;
+                logger.info("Replicate to [" + s.getPort() + "] Send " + totalRead + "bytes");
                 dos.write(buffer, 0, read);
             }
 
-            // fis.close();
+            fis.close();
             // dos.close();
             res = (String) ois.readObject();
             logger.info(res);

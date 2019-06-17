@@ -119,7 +119,7 @@ public class Client {
     private void cmdDownload(String[] cmds) {
         byte[] buffer = new byte[4096];
         int read, totalRead = 0;
-        String ret, filename = cmds[1];
+        String ret="", filename = cmds[1];
 
         try {
             oos.writeObject(cmds);
@@ -127,7 +127,9 @@ public class Client {
             DataInputStream dis = new DataInputStream(socket.getInputStream());
             FileOutputStream fos = new FileOutputStream("downloads/" + filename);
 
-            while((read = dis.read(buffer,0 ,buffer.length)) > 0 ) {
+
+            //  dis.read() also receive Server's writeObject message..
+            while((read = dis.read(buffer,0 , buffer.length)) > 0 ) {
                 totalRead += read;
                 logger.info("read " + totalRead + "bytes.");
                 fos.write(buffer, 0, read);
@@ -136,16 +138,16 @@ public class Client {
                     break;
             }
 
-            // fos.close();
-            // dis.close();
 
-            ret = (String) ois.readObject();
-            //ret = "Succeeded file download. Filename: " + filename;
+            fos.close();
+
+            //ret = (String) ois.readObject();
+            //  dis.close();
+
+            ret = "Succeeded file download. Filename: " + filename;
             logger.info(cmds[0]);
             logger.info(ret);
         } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
 
@@ -153,7 +155,7 @@ public class Client {
 
     private void cmdUpload(String[] cmds) {
         byte[] buffer = new byte[4096];
-        int read;
+        int read, totalRead = 0;
         String filename = cmds[1];
         String msg = cmds[0] + ":" + cmds[1];
         String res;
@@ -166,12 +168,13 @@ public class Client {
 
             // upload file from client to server
             while ((read=fis.read(buffer)) > 0) {
-                logger.info("Send" + read + "bytes");
+                totalRead += read;
+                logger.info("Send " + totalRead + "bytes");
                 dos.write(buffer, 0, read);
             }
 
             // Why does it have to be commented out?
-            // fis.close();
+            fis.close();
             // dos.close();
 
             res = (String) ois.readObject();

@@ -7,3 +7,8 @@ apt-get install -y openjdk-11-jdk-headless
 apt-get install -y ecj                    
 apt-get install -y openjdk-8-jdk-headless 
 apt-get install -y net-tools
+
+javac dapp/Master.java
+javac dapp/Slave.java
+javac dapp/Client.java
+

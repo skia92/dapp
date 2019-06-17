@@ -2,10 +2,10 @@
 
 #docker build -t dapp:server -f Dockerfile .
 
-docker run -it --name dapp_client --net container:dapp_master dapp:server bash -c "javac /src/dapp/Client.java && java dapp.Client download default.txt"
+docker run -it --name dapp_client --net container:dapp_master dapp:server bash 
 
 ## Monitor client
-#docker attach dapp_client
+# docker attach dapp_client
 #
 ## Start client
 #docker start -i dapp_client
